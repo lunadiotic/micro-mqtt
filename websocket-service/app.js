@@ -4,11 +4,11 @@ const { verifyToken } = require('./auth');
 
 // MQTT Configuration
 const mqttOptions = {
-    host: '06ff0ddffd964041a94dae7157534386.s1.eu.hivemq.cloud',
+    host: '',
     port: 8883,
     protocol: 'mqtts',
-    username: 'aim123',
-    password: 'Kata123Sandi',
+    username: '',
+    password: '',
     reconnectPeriod: 5000, // Mencoba reconnect setiap 5 detik
     connectTimeout: 30000, // Timeout koneksi 30 detik
 };

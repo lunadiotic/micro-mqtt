@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>IoT Control Panel</title>
+		<style>
+			.status-container {
+				margin: 20px 0;
+				padding: 10px;
+				border: 1px solid #ccc;
+			}
+			.device-data {
+				margin: 10px 0;
+				padding: 10px;
+				background-color: #f0f0f0;
+			}
+			.error {
+				color: red;
+			}
+			.success {
+				color: green;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>IoT Control Panel</h1>
+
+		<!-- Login Form -->
+		<form id="login-form">
+			<input type="text" id="username" placeholder="Username" required />
+			<input type="password" id="password" placeholder="Password" required />
+			<button type="submit">Login</button>
+		</form>
+
+		<!-- Status Container -->
+		<div class="status-container">
+			<div id="connection-status"></div>
+			<div id="mqtt-status"></div>
+		</div>
+
+		<!-- Device Control -->
+		<div id="device-control" style="display: none">
+			<h2>Device Control</h2>
+			<select id="device-selector">
+				<option value="device-001">Device 1</option>
+				<option value="device-002">Device 2</option>
+			</select>
+			<button id="send-turn-on">Turn On</button>
+			<button id="send-turn-off">Turn Off</button>
+			<input type="range" id="intensity" min="0" max="100" value="100" />
+			<span id="intensity-value">100%</span>
+		</div>
+
+		<!-- Data Display -->
+		<div id="data-container">
+			<h2>Device Data</h2>
+			<div id="device-data"></div>
+		</div>
+
+		<script src="main.js"></script>
+	</body>
+</html>

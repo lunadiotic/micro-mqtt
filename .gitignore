@@ -1,0 +1,47 @@
+# Node.js dependencies
+node_modules/
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Environment variables file
+.env
+
+# Build output (jika ada)
+build/
+dist/
+
+# Coverage reports
+coverage/
+
+# WebSocket server log files
+*.log
+
+# MQTT client cache or logs (jika ada)
+.mqtt/
+
+# Miscellaneous
+.idea/
+.vscode/
+
+# Optional if you are using Docker
+.docker/
+docker-compose.yml
+
+# Optional if using a package-lock or yarn.lock file
+package-lock.json
+yarn.lock
+
+# Ignore some common editor files (e.g., VSCode, JetBrains)
+.vscode/
+.idea/
+
+# Ignore .env files with sensitive data (e.g., tokens, passwords)
+.env.local
+.env.*.local

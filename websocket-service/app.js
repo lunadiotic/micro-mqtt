@@ -18,6 +18,7 @@ class IoTBridgeService {
         this.mqttClient = null;
         this.wss = null;
         this.isConnected = false;
+        this.clientSubscriptions = new Map(); // Track client subscriptions
         this.initialize();
     }
 
@@ -32,18 +33,6 @@ class IoTBridgeService {
         this.mqttClient.on('connect', () => {
             console.log('Connected to MQTT broker');
             this.isConnected = true;
-
-            // Subscribe ke topik yang diperlukan
-            const topics = ['iot/device/data', 'iot/device/status'];
-            topics.forEach(topic => {
-                this.mqttClient.subscribe(topic, (err) => {
-                    if (err) {
-                        console.error(`Failed to subscribe to ${topic}:`, err);
-                    } else {
-                        console.log(`Subscribed to topic: ${topic}`);
-                    }
-                });
-            });
         });
 
         this.mqttClient.on('error', (error) => {
@@ -86,9 +75,9 @@ class IoTBridgeService {
 
             const user = await verifyToken(token);
             ws.user = user;
+            this.clientSubscriptions.set(ws, new Set()); // Initialize empty subscription set
             console.log(`User connected: ${user.username}`);
 
-            // Kirim status koneksi MQTT ke client
             ws.send(JSON.stringify({
                 type: 'connection_status',
                 connected: this.isConnected
@@ -99,11 +88,8 @@ class IoTBridgeService {
             });
 
             ws.on('close', () => {
+                this.clientSubscriptions.delete(ws);
                 console.log(`User disconnected: ${user.username}`);
-            });
-
-            ws.on('error', (error) => {
-                console.error(`WebSocket error for user ${user.username}:`, error);
             });
 
         } catch (err) {
@@ -111,6 +97,7 @@ class IoTBridgeService {
             ws.close(1008, 'Unauthorized');
         }
     }
+
 
     handleWebSocketMessage(ws, data) {
         try {
@@ -148,42 +135,147 @@ class IoTBridgeService {
     }
 
     handleDeviceCommand(ws, message) {
-        const { deviceId, command, payload } = message;
-        const topic = `iot/device/${deviceId}/command`;
+        const { projectId, deviceId, command, payload } = message;
 
-        this.mqttClient.publish(topic, JSON.stringify({
-            command,
-            payload,
-            timestamp: new Date().toISOString(),
-            userId: ws.user.id
-        }), { qos: 1 }, (err) => {
-            if (err) {
-                console.error('Failed to publish command:', err);
+        this.verifyProjectAccess(projectId, ws.user.id)
+            .then(project => {
+                const topicPrefix = project.getTopicPrefix();
+                const topic = `${topicPrefix}/device/${deviceId}/command`;
+
+                console.log(`Sending command to topic: ${topic}`);
+
+                this.mqttClient.publish(topic, JSON.stringify({
+                    command,
+                    payload,
+                    timestamp: new Date().toISOString(),
+                    userId: ws.user.id
+                }), { qos: 1 }, (err) => {
+                    if (err) {
+                        ws.send(JSON.stringify({
+                            type: 'error',
+                            message: 'Failed to send command'
+                        }));
+                    } else {
+                        ws.send(JSON.stringify({
+                            type: 'success',
+                            message: 'Command sent successfully'
+                        }));
+                    }
+                });
+            })
+            .catch(error => {
                 ws.send(JSON.stringify({
                     type: 'error',
-                    message: 'Failed to send command'
+                    message: error.message
                 }));
-            } else {
-                ws.send(JSON.stringify({
-                    type: 'success',
-                    message: 'Command sent successfully'
-                }));
-            }
-        });
+            });
     }
 
-    handleSubscription(ws, message) {
-        const { topic } = message;
-        // Implementasi logika subscribe sesuai kebutuhan
-        // Pastikan untuk memvalidasi hak akses user terhadap topic
+    async handleSubscription(ws, message) {
+        try {
+            const { projectId, devices } = message;
+
+            // Verify project ownership
+            const project = await this.verifyProjectAccess(projectId, ws.user.id);
+            if (!project) {
+                throw new Error('Project access denied');
+            }
+
+            const topicPrefix = project.getTopicPrefix();
+            const subscriptions = this.clientSubscriptions.get(ws);
+
+            // Subscribe to project-specific device topics
+            devices.forEach(deviceId => {
+                // Subscribe to device data topic
+                const deviceTopic = `${topicPrefix}/device/${deviceId}/data`;
+                subscriptions.add(deviceTopic);
+
+                // Subscribe to device status topic
+                const statusTopic = `${topicPrefix}/device/${deviceId}/status`;
+                subscriptions.add(statusTopic);
+
+                // Subscribe to MQTT topics
+                this.mqttClient.subscribe(deviceTopic);
+                this.mqttClient.subscribe(statusTopic);
+            });
+
+            ws.send(JSON.stringify({
+                type: 'subscription_success',
+                projectId,
+                devices,
+                message: 'Successfully subscribed to device topics'
+            }));
+
+        } catch (error) {
+            ws.send(JSON.stringify({
+                type: 'error',
+                message: error.message
+            }));
+        }
+    }
+
+    async verifyProjectAccess(projectId, userId) {
+        // This should make an API call to the project service
+        // For now, we'll mock it
+        return { id: projectId, userId, getTopicPrefix: () => `${userId}/${projectId}` };
     }
 
     broadcastToWebSocketClients(data) {
+        const { topic, message } = data;
+
+        console.log(`Broadcasting message to WebSocket clients: ${message}`);
+
         this.wss.clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
+            if (client.readyState !== WebSocket.OPEN) return;
+
+            const subscriptions = this.clientSubscriptions.get(client);
+            if (!subscriptions) return;
+
+            // Check if client is subscribed to this topic's project
+            const hasAccess = Array.from(subscriptions).some(prefix =>
+                topic.startsWith(prefix)
+            );
+
+            if (hasAccess) {
                 client.send(JSON.stringify(data));
             }
         });
+    }
+
+    handleDeviceCommand(ws, message) {
+        const { projectId, deviceId, command, payload } = message;
+
+        // Verify project access before sending command
+        this.verifyProjectAccess(projectId, ws.user.id)
+            .then(project => {
+                const topicPrefix = project.getTopicPrefix();
+                const topic = `${topicPrefix}/device/${deviceId}/command`;
+
+                this.mqttClient.publish(topic, JSON.stringify({
+                    command,
+                    payload,
+                    timestamp: new Date().toISOString(),
+                    userId: ws.user.id
+                }), { qos: 1 }, (err) => {
+                    if (err) {
+                        ws.send(JSON.stringify({
+                            type: 'error',
+                            message: 'Failed to send command'
+                        }));
+                    } else {
+                        ws.send(JSON.stringify({
+                            type: 'success',
+                            message: 'Command sent successfully'
+                        }));
+                    }
+                });
+            })
+            .catch(error => {
+                ws.send(JSON.stringify({
+                    type: 'error',
+                    message: error.message
+                }));
+            });
     }
 }
 
